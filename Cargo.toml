@@ -1,0 +1,32 @@
+[package]
+name = "sua-sdk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["loonghao <hal.long@outlook.com>"]
+description = "Transport-neutral contracts for agents to discover and invoke software capabilities"
+license = "MIT"
+repository = "https://github.com/software-use-ai/sua-sdk"
+readme = "README.md"
+keywords = ["agent", "automation", "capability", "software-use"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+async-trait = "0.1"
+semver = { version = "1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio-util = "0.7"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
