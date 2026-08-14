@@ -40,6 +40,8 @@ pub struct InvocationRequest {
 pub struct InvocationReceipt {
     /// Invocation identity.
     pub invocation_id: InvocationId,
+    /// Selected capability identity.
+    pub capability_id: CapabilityId,
     /// Selected provider identity.
     pub provider_id: ProviderId,
     /// Selected capability contract version.

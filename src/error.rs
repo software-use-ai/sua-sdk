@@ -17,6 +17,8 @@ pub enum ErrorCode {
     DuplicateInvocation,
     /// The invocation identifier is unknown.
     InvocationNotFound,
+    /// A bounded runtime or catalog capacity has been reached.
+    ResourceExhausted,
     /// Input failed the selected capability schema.
     InputSchemaViolation,
     /// Output failed the selected capability schema.
