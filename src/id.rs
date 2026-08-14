@@ -62,11 +62,10 @@ identifier_type!(InvocationId, "invocation", true);
 /// Why an SDK identifier was rejected.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 #[error(
-    "invalid {kind} identifier `{value}`: use 1-128 lowercase ASCII letters, digits, dots, slashes, and single hyphens; capability/provider IDs start with a letter, and all IDs end with a letter or digit"
+    "invalid {kind} identifier: use 1-128 lowercase ASCII letters, digits, dots, slashes, and single hyphens; capability/provider IDs start with a letter, and all IDs end with a letter or digit"
 )]
 pub struct IdentifierError {
     kind: &'static str,
-    value: String,
 }
 
 fn validate_identifier(
@@ -92,10 +91,7 @@ fn validate_identifier(
     if valid_length && valid_start && valid_end && valid_characters && valid_separators {
         Ok(())
     } else {
-        Err(IdentifierError {
-            kind,
-            value: value.to_owned(),
-        })
+        Err(IdentifierError { kind })
     }
 }
 

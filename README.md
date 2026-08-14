@@ -41,8 +41,10 @@ portable capability contracts.
 
 Public discovery text and error diagnostics are length-bounded validated types.
 Snapshot/event enums make contradictory lifecycle evidence unrepresentable, and
-event sequences are non-zero. Runtime implementations still own provider trust,
-secret redaction, policy, payload-size limits, and execution semantics.
+event sequences are non-zero. Event pages validate cross-record identity,
+gap-free ordering, cursor, and terminal evidence at construction and wire
+deserialization. Runtime implementations still own provider trust, secret
+redaction, policy, payload-size limits, and execution semantics.
 
 ## Compatibility
 

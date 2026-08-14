@@ -13,9 +13,9 @@ mod text;
 pub use error::{ErrorCode, MAX_ERROR_MESSAGE_CHARS, SoftwareUseError};
 pub use id::{CapabilityId, IdentifierError, InvocationId, ProviderId};
 pub use invocation::{
-    CancellationOutcome, EventCursor, EventKind, EventPage, InvocationConstraints, InvocationPort,
-    InvocationReceipt, InvocationRequest, InvocationResult, InvocationSnapshot, InvocationState,
-    InvocationStatus, RuntimeEvent, RuntimeEventData,
+    CancellationOutcome, EventCursor, EventKind, EventPage, EventPageValidationError,
+    InvocationConstraints, InvocationPort, InvocationReceipt, InvocationRequest, InvocationResult,
+    InvocationSnapshot, InvocationState, InvocationStatus, RuntimeEvent, RuntimeEventData,
 };
 pub use provider::{
     CancellationSignal, CancellationSource, CapabilityOffer, CapabilityProvider, CapabilityQuery,

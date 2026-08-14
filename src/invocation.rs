@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use semver::{Version, VersionReq};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
 use std::num::NonZeroU64;
+use thiserror::Error;
 
 use crate::{
     CapabilityId, CapabilityOffer, InteractionKind, InvocationId, ProviderId, SoftwareUseError,
@@ -275,8 +276,28 @@ impl RuntimeEvent {
 #[serde(transparent)]
 pub struct EventCursor(pub u64);
 
+/// Why an event replay page violates cross-record wire invariants.
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub enum EventPageValidationError {
+    /// Events in one page refer to different invocations.
+    #[error("event page contains multiple invocation identifiers")]
+    MixedInvocations,
+    /// Events in one page refer to different pinned providers.
+    #[error("event page contains multiple provider identifiers")]
+    MixedProviders,
+    /// Adjacent events are not gap-free and monotonically increasing.
+    #[error("event page sequences are not contiguous")]
+    NonContiguousSequences,
+    /// The returned cursor does not identify the last event in a non-empty page.
+    #[error("event page cursor does not match the last event sequence")]
+    CursorMismatch,
+    /// The terminal marker contradicts the last event in a non-empty page.
+    #[error("event page terminal marker contradicts its last event")]
+    TerminalMismatch,
+}
+
 /// One transport-neutral event replay page.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventPage {
     /// Events with a sequence greater than the requested cursor.
@@ -285,6 +306,95 @@ pub struct EventPage {
     pub next_cursor: EventCursor,
     /// Whether the invocation was terminal when this page was produced.
     pub terminal: bool,
+}
+
+impl EventPage {
+    /// Builds a page only when its cross-record invariants hold.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EventPageValidationError`] when events disagree on identity, ordering, cursor, or
+    /// terminal evidence.
+    pub fn new(
+        events: Vec<RuntimeEvent>,
+        next_cursor: EventCursor,
+        terminal: bool,
+    ) -> Result<Self, EventPageValidationError> {
+        let page = Self {
+            events,
+            next_cursor,
+            terminal,
+        };
+        page.validate()?;
+        Ok(page)
+    }
+
+    /// Validates invocation/provider identity, ordering, cursor, and terminal evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EventPageValidationError`] for the first violated page-level invariant.
+    pub fn validate(&self) -> Result<(), EventPageValidationError> {
+        let Some(first) = self.events.first() else {
+            return Ok(());
+        };
+
+        if self
+            .events
+            .iter()
+            .any(|event| event.invocation_id != first.invocation_id)
+        {
+            return Err(EventPageValidationError::MixedInvocations);
+        }
+        if self
+            .events
+            .iter()
+            .any(|event| event.provider_id != first.provider_id)
+        {
+            return Err(EventPageValidationError::MixedProviders);
+        }
+        if self.events.windows(2).any(|events| {
+            events[0]
+                .sequence
+                .get()
+                .checked_add(1)
+                .is_none_or(|expected| events[1].sequence.get() != expected)
+        }) {
+            return Err(EventPageValidationError::NonContiguousSequences);
+        }
+
+        let last = self.events.last().unwrap_or(first);
+        if self.next_cursor.0 != last.sequence.get() {
+            return Err(EventPageValidationError::CursorMismatch);
+        }
+        let last_is_terminal = matches!(
+            last.kind(),
+            EventKind::Succeeded | EventKind::Failed | EventKind::Cancelled
+        );
+        if self.terminal != last_is_terminal {
+            return Err(EventPageValidationError::TerminalMismatch);
+        }
+
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for EventPage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WirePage {
+            events: Vec<RuntimeEvent>,
+            next_cursor: EventCursor,
+            terminal: bool,
+        }
+
+        let wire = WirePage::deserialize(deserializer)?;
+        Self::new(wire.events, wire.next_cursor, wire.terminal).map_err(de::Error::custom)
+    }
 }
 
 /// Agent/adapter-facing runtime port, independent of MCP, HTTP, CLI, or IPC.
@@ -324,7 +434,7 @@ pub trait InvocationPort: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::{InvocationSnapshot, RuntimeEvent};
+    use super::{EventPage, InvocationSnapshot, RuntimeEvent};
 
     #[test]
     fn malformed_snapshot_state_evidence_is_rejected() {
@@ -360,5 +470,81 @@ mod tests {
             "data": {"kind": "failed"}
         }"#;
         assert!(serde_json::from_str::<RuntimeEvent>(missing_error).is_err());
+    }
+
+    #[test]
+    fn malformed_event_page_cross_record_invariants_are_rejected() {
+        let cases = [
+            // Mixed invocation identifiers.
+            r#"{
+                "events": [
+                    {"invocation_id":"invocation-1","sequence":1,"provider_id":"provider.one","data":{"kind":"accepted"}},
+                    {"invocation_id":"invocation-2","sequence":2,"provider_id":"provider.one","data":{"kind":"started"}}
+                ],
+                "next_cursor":2,
+                "terminal":false
+            }"#,
+            // Mixed provider identifiers.
+            r#"{
+                "events": [
+                    {"invocation_id":"invocation-1","sequence":1,"provider_id":"provider.one","data":{"kind":"accepted"}},
+                    {"invocation_id":"invocation-1","sequence":2,"provider_id":"provider.two","data":{"kind":"started"}}
+                ],
+                "next_cursor":2,
+                "terminal":false
+            }"#,
+            // Sequence gap.
+            r#"{
+                "events": [
+                    {"invocation_id":"invocation-1","sequence":1,"provider_id":"provider.one","data":{"kind":"accepted"}},
+                    {"invocation_id":"invocation-1","sequence":3,"provider_id":"provider.one","data":{"kind":"started"}}
+                ],
+                "next_cursor":3,
+                "terminal":false
+            }"#,
+            // Cursor does not identify the last event.
+            r#"{
+                "events": [
+                    {"invocation_id":"invocation-1","sequence":1,"provider_id":"provider.one","data":{"kind":"accepted"}}
+                ],
+                "next_cursor":2,
+                "terminal":false
+            }"#,
+            // A terminal marker without a terminal last event.
+            r#"{
+                "events": [
+                    {"invocation_id":"invocation-1","sequence":1,"provider_id":"provider.one","data":{"kind":"accepted"}}
+                ],
+                "next_cursor":1,
+                "terminal":true
+            }"#,
+        ];
+
+        for json in cases {
+            assert!(
+                serde_json::from_str::<EventPage>(json).is_err(),
+                "accepted malformed page: {json}"
+            );
+        }
+    }
+
+    #[test]
+    fn valid_event_page_round_trips_with_validation() {
+        let json = r#"{
+            "events": [
+                {"invocation_id":"invocation-1","sequence":1,"provider_id":"provider.one","data":{"kind":"accepted"}},
+                {"invocation_id":"invocation-1","sequence":2,"provider_id":"provider.one","data":{"kind":"started"}},
+                {"invocation_id":"invocation-1","sequence":3,"provider_id":"provider.one","data":{"kind":"succeeded"}}
+            ],
+            "next_cursor":3,
+            "terminal":true
+        }"#;
+        let page = serde_json::from_str::<EventPage>(json).expect("valid page");
+        page.validate().expect("page remains valid");
+        let round_trip = serde_json::to_string(&page).expect("serialize page");
+        assert_eq!(
+            serde_json::from_str::<EventPage>(&round_trip).expect("deserialize page"),
+            page
+        );
     }
 }
