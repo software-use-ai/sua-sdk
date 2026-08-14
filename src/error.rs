@@ -1,5 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
+
+/// Maximum number of Unicode scalar values in a transport diagnostic.
+pub const MAX_ERROR_MESSAGE_CHARS: usize = 512;
 
 /// Stable, transport-independent failure categories.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -31,17 +34,18 @@ pub enum ErrorCode {
     Internal,
 }
 
-/// A bounded error safe to carry through SDK transports.
-#[derive(Clone, Debug, Deserialize, Eq, Error, PartialEq, Serialize)]
+/// A length-bounded error safe to carry through SDK transports.
+///
+/// Producers remain responsible for excluding credentials and other secrets.
+#[derive(Clone, Debug, Eq, Error, PartialEq, Serialize)]
 #[error("{code:?}: {message}")]
-#[serde(deny_unknown_fields)]
 pub struct SoftwareUseError {
     /// Stable machine-readable category.
-    pub code: ErrorCode,
-    /// Human-readable diagnostic without arbitrary provider secrets.
-    pub message: String,
+    code: ErrorCode,
+    /// Human-readable diagnostic; producers must redact sensitive values.
+    message: String,
     /// Whether a caller may reasonably retry as a new invocation.
-    pub retryable: bool,
+    retryable: bool,
 }
 
 impl SoftwareUseError {
@@ -50,9 +54,27 @@ impl SoftwareUseError {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,
-            message: message.into(),
+            message: bound_message(message.into()),
             retryable: false,
         }
+    }
+
+    /// Returns the stable machine-readable category.
+    #[must_use]
+    pub const fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    /// Returns the bounded human-readable diagnostic.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Returns whether a new explicit invocation may be retried.
+    #[must_use]
+    pub const fn retryable(&self) -> bool {
+        self.retryable
     }
 
     /// Marks whether a new explicit invocation may be retried.
@@ -60,5 +82,63 @@ impl SoftwareUseError {
     pub const fn with_retryable(mut self, retryable: bool) -> Self {
         self.retryable = retryable;
         self
+    }
+}
+
+impl<'de> Deserialize<'de> for SoftwareUseError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireError {
+            code: ErrorCode,
+            message: String,
+            retryable: bool,
+        }
+
+        let wire = WireError::deserialize(deserializer)?;
+        if wire.message.chars().count() > MAX_ERROR_MESSAGE_CHARS {
+            return Err(de::Error::custom(format!(
+                "error message exceeds {MAX_ERROR_MESSAGE_CHARS} characters"
+            )));
+        }
+        Ok(Self {
+            code: wire.code,
+            message: wire.message,
+            retryable: wire.retryable,
+        })
+    }
+}
+
+fn bound_message(message: String) -> String {
+    if message.chars().count() <= MAX_ERROR_MESSAGE_CHARS {
+        return message;
+    }
+    let mut bounded: String = message.chars().take(MAX_ERROR_MESSAGE_CHARS - 1).collect();
+    bounded.push('…');
+    bounded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ErrorCode, MAX_ERROR_MESSAGE_CHARS, SoftwareUseError};
+
+    #[test]
+    fn constructor_bounds_transport_diagnostics() {
+        let error = SoftwareUseError::new(ErrorCode::Internal, "x".repeat(600));
+        assert_eq!(error.message().chars().count(), MAX_ERROR_MESSAGE_CHARS);
+        assert!(error.message().ends_with('…'));
+    }
+
+    #[test]
+    fn deserialization_rejects_oversized_diagnostics() {
+        let json = serde_json::json!({
+            "code": "internal",
+            "message": "x".repeat(MAX_ERROR_MESSAGE_CHARS + 1),
+            "retryable": false
+        });
+        assert!(serde_json::from_value::<SoftwareUseError>(json).is_err());
     }
 }

@@ -8,15 +8,18 @@ mod error;
 mod id;
 mod invocation;
 mod provider;
+mod text;
 
-pub use error::{ErrorCode, SoftwareUseError};
+pub use error::{ErrorCode, MAX_ERROR_MESSAGE_CHARS, SoftwareUseError};
 pub use id::{CapabilityId, IdentifierError, InvocationId, ProviderId};
 pub use invocation::{
-    EventCursor, EventKind, EventPage, InvocationConstraints, InvocationPort, InvocationReceipt,
-    InvocationRequest, InvocationResult, InvocationSnapshot, InvocationState, RuntimeEvent,
+    CancellationOutcome, EventCursor, EventKind, EventPage, InvocationConstraints, InvocationPort,
+    InvocationReceipt, InvocationRequest, InvocationResult, InvocationSnapshot, InvocationState,
+    InvocationStatus, RuntimeEvent, RuntimeEventData,
 };
 pub use provider::{
     CancellationSignal, CancellationSource, CapabilityOffer, CapabilityProvider, CapabilityQuery,
     CapabilitySpec, InteractionKind, OperationSafety, ProviderCapability, ProviderDescriptor,
-    ProviderInvocation,
+    ProviderInvocation, SchemaDialect,
 };
+pub use text::{MAX_METADATA_TEXT_CHARS, MetadataText, MetadataTextError};

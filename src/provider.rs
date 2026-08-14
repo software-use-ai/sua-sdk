@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::{CapabilityId, InvocationRequest, InvocationResult, ProviderId, SoftwareUseError};
+use crate::{
+    CapabilityId, InvocationRequest, InvocationResult, MetadataText, ProviderId, SoftwareUseError,
+};
 
 /// How a provider interacts with software, ordered from strongest to weakest contract.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -28,6 +30,24 @@ pub enum OperationSafety {
     Mutating,
 }
 
+/// Explicit JSON Schema dialect for reproducible capability contracts.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SchemaDialect {
+    /// JSON Schema Draft 2020-12.
+    Draft202012,
+}
+
+impl SchemaDialect {
+    /// Returns the canonical dialect URI.
+    #[must_use]
+    pub const fn canonical_uri(self) -> &'static str {
+        match self {
+            Self::Draft202012 => "https://json-schema.org/draft/2020-12/schema",
+        }
+    }
+}
+
 /// A versioned capability contract with schemas on both sides of execution.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -37,9 +57,11 @@ pub struct CapabilitySpec {
     /// Semantic version of this capability contract.
     pub version: Version,
     /// Short human-readable label.
-    pub title: String,
+    pub title: MetadataText,
     /// Bounded explanatory text for discovery clients.
-    pub description: String,
+    pub description: MetadataText,
+    /// Explicit dialect applied to both schemas.
+    pub schema_dialect: SchemaDialect,
     /// JSON Schema for invocation input.
     pub input_schema: Value,
     /// JSON Schema for successful output.
@@ -57,9 +79,9 @@ pub struct ProviderDescriptor {
     /// Semantic version of the provider implementation.
     pub version: Version,
     /// Human-readable name.
-    pub name: String,
+    pub name: MetadataText,
     /// Human-readable provider description.
-    pub description: String,
+    pub description: MetadataText,
 }
 
 /// One capability as implemented by a provider through one or more interactions.
