@@ -58,11 +58,16 @@ macro_rules! identifier_type {
 identifier_type!(CapabilityId, "capability", false);
 identifier_type!(ProviderId, "provider", false);
 identifier_type!(InvocationId, "invocation", true);
+identifier_type!(PluginId, "plugin", false);
+identifier_type!(ServiceId, "service", false);
+identifier_type!(EventId, "event", false);
+identifier_type!(PermissionId, "permission", false);
+identifier_type!(ProtocolId, "protocol", false);
 
 /// Why an SDK identifier was rejected.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 #[error(
-    "invalid {kind} identifier: use 1-128 lowercase ASCII letters, digits, dots, slashes, and single hyphens; capability/provider IDs start with a letter, and all IDs end with a letter or digit"
+    "invalid {kind} identifier: use 1-128 lowercase ASCII letters, digits, dots, slashes, and single hyphens; only invocation IDs may start with a digit, and all IDs end with a letter or digit"
 )]
 pub struct IdentifierError {
     kind: &'static str,
@@ -97,7 +102,10 @@ fn validate_identifier(
 
 #[cfg(test)]
 mod tests {
-    use super::{CapabilityId, InvocationId, ProviderId};
+    use super::{
+        CapabilityId, EventId, InvocationId, PermissionId, PluginId, ProtocolId, ProviderId,
+        ServiceId,
+    };
 
     #[test]
     fn accepts_namespaced_identifiers() {
@@ -110,6 +118,12 @@ mod tests {
                 .is_ok()
         );
         assert!("019ffe5b".parse::<CapabilityId>().is_err());
+
+        assert!("software-use.paint".parse::<PluginId>().is_ok());
+        assert!("runtime.provider-registry".parse::<ServiceId>().is_ok());
+        assert!("plugin.lifecycle/activated".parse::<EventId>().is_ok());
+        assert!("filesystem.write".parse::<PermissionId>().is_ok());
+        assert!("software-use.plugin-rpc".parse::<ProtocolId>().is_ok());
     }
 
     #[test]
@@ -128,5 +142,14 @@ mod tests {
             serde_json::from_str::<CapabilityId>(&json).expect("deserialize"),
             id
         );
+    }
+
+    #[test]
+    fn plugin_ecosystem_identifiers_must_start_with_a_letter() {
+        assert!("1-plugin".parse::<PluginId>().is_err());
+        assert!("1-service".parse::<ServiceId>().is_err());
+        assert!("1-event".parse::<EventId>().is_err());
+        assert!("1-permission".parse::<PermissionId>().is_err());
+        assert!("1-protocol".parse::<ProtocolId>().is_err());
     }
 }
