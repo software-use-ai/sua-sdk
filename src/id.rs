@@ -6,7 +6,7 @@ use thiserror::Error;
 const MAX_IDENTIFIER_LENGTH: usize = 128;
 
 macro_rules! identifier_type {
-    ($name:ident, $label:literal) => {
+    ($name:ident, $label:literal, $allow_digit_start:literal) => {
         #[doc = concat!("A validated ", $label, " identifier.")]
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name(String);
@@ -23,7 +23,7 @@ macro_rules! identifier_type {
             type Err = IdentifierError;
 
             fn from_str(value: &str) -> Result<Self, Self::Err> {
-                validate_identifier($label, value)?;
+                validate_identifier($label, value, $allow_digit_start)?;
                 Ok(Self(value.to_owned()))
             }
         }
@@ -55,24 +55,30 @@ macro_rules! identifier_type {
     };
 }
 
-identifier_type!(CapabilityId, "capability");
-identifier_type!(ProviderId, "provider");
-identifier_type!(InvocationId, "invocation");
+identifier_type!(CapabilityId, "capability", false);
+identifier_type!(ProviderId, "provider", false);
+identifier_type!(InvocationId, "invocation", true);
 
 /// Why an SDK identifier was rejected.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 #[error(
-    "invalid {kind} identifier `{value}`: use 1-128 lowercase ASCII letters, digits, dots, slashes, and single hyphens; start with a letter and end with a letter or digit"
+    "invalid {kind} identifier `{value}`: use 1-128 lowercase ASCII letters, digits, dots, slashes, and single hyphens; capability/provider IDs start with a letter, and all IDs end with a letter or digit"
 )]
 pub struct IdentifierError {
     kind: &'static str,
     value: String,
 }
 
-fn validate_identifier(kind: &'static str, value: &str) -> Result<(), IdentifierError> {
+fn validate_identifier(
+    kind: &'static str,
+    value: &str,
+    allow_digit_start: bool,
+) -> Result<(), IdentifierError> {
     let bytes = value.as_bytes();
     let valid_length = !bytes.is_empty() && bytes.len() <= MAX_IDENTIFIER_LENGTH;
-    let valid_start = bytes.first().is_some_and(u8::is_ascii_lowercase);
+    let valid_start = bytes.first().is_some_and(|byte| {
+        byte.is_ascii_lowercase() || (allow_digit_start && byte.is_ascii_digit())
+    });
     let valid_end = bytes
         .last()
         .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit());
@@ -102,6 +108,12 @@ mod tests {
         assert!("software.window.observe".parse::<CapabilityId>().is_ok());
         assert!("dcc/cua-windows".parse::<ProviderId>().is_ok());
         assert!("invocation-2026-08-14".parse::<InvocationId>().is_ok());
+        assert!(
+            "019ffe5b-5c93-7091-9277-92d045da6ef0"
+                .parse::<InvocationId>()
+                .is_ok()
+        );
+        assert!("019ffe5b".parse::<CapabilityId>().is_err());
     }
 
     #[test]
