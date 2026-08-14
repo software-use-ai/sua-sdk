@@ -17,11 +17,12 @@ Agent    -> consumes Capability through InvocationPort
 ## What this crate owns
 
 - validated capability, provider, and invocation identities;
-- versioned JSON input/output capability contracts and safety classification;
+- versioned Draft 2020-12 input/output capability contracts and safety
+  classification;
 - deterministic interaction kinds: `Typed`, `SemanticUi`, `VisualUi`;
 - provider discovery offers and hard invocation constraints;
-- asynchronous invocation receipts, snapshots, events, results, errors, and
-  cancellation;
+- state-valid invocation receipts, tagged snapshots/events, bounded errors, and
+  owner/source-separated cooperative cancellation;
 - the provider-facing `CapabilityProvider` port and agent-facing
   `InvocationPort`.
 
@@ -38,6 +39,11 @@ In particular, exact software-target integrity remains a provider concern. The
 SDK carries no generic process/window handle because those types are not
 portable capability contracts.
 
+Public discovery text and error diagnostics are length-bounded validated types.
+Snapshot/event enums make contradictory lifecycle evidence unrepresentable, and
+event sequences are non-zero. Runtime implementations still own provider trust,
+secret redaction, policy, payload-size limits, and execution semantics.
+
 ## Compatibility
 
 The minimum supported Rust version is 1.85. Public wire types use closed serde
@@ -53,4 +59,3 @@ vx cargo clippy --locked --all-targets -- -D warnings
 ## License
 
 MIT
-

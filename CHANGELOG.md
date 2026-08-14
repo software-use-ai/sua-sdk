@@ -8,4 +8,5 @@ All notable changes to this project will be documented in this file.
 
 - Establish transport-neutral capability, provider, invocation, event, error,
   and cancellation contracts.
-
+- Enforce explicit schema dialects, bounded metadata/errors, state-valid wire
+  evidence, provider-version receipts, and owner-only cancellation authority.
