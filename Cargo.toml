@@ -2,7 +2,7 @@
 name = "sua-sdk"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.97"
 authors = ["loonghao <hal.long@outlook.com>"]
 description = "Transport-neutral contracts for agents to discover and invoke software capabilities"
 license = "MIT"
@@ -29,4 +29,3 @@ missing_docs = "warn"
 [lints.clippy]
 all = "warn"
 pedantic = "warn"
-
