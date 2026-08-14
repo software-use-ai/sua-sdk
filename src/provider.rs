@@ -107,18 +107,27 @@ pub struct ProviderInvocation {
     pub offer: CapabilityOffer,
 }
 
-/// Cloneable cooperative cancellation shared across the provider boundary.
+/// Runtime-owned authority for cooperative cancellation.
+///
+/// Providers receive only [`CancellationSignal`], so they cannot manufacture a
+/// caller cancellation or a corresponding runtime event.
 #[derive(Clone, Debug, Default)]
-pub struct CancellationSignal(CancellationToken);
+pub struct CancellationSource(CancellationToken);
 
-impl CancellationSignal {
-    /// Creates an uncancelled signal.
+impl CancellationSource {
+    /// Creates an uncancelled source.
     #[must_use]
     pub fn new() -> Self {
         Self(CancellationToken::new())
     }
 
-    /// Requests cancellation. Repeated calls are idempotent.
+    /// Creates a read-only signal for a provider.
+    #[must_use]
+    pub fn signal(&self) -> CancellationSignal {
+        CancellationSignal(self.0.clone())
+    }
+
+    /// Requests cancellation. Repeated calls are idempotent and owner-only.
     pub fn cancel(&self) {
         self.0.cancel();
     }
@@ -128,8 +137,20 @@ impl CancellationSignal {
     pub fn is_cancelled(&self) -> bool {
         self.0.is_cancelled()
     }
+}
 
-    /// Waits until cancellation is requested.
+/// Cloneable, read-only cooperative cancellation observed by providers.
+#[derive(Clone, Debug)]
+pub struct CancellationSignal(CancellationToken);
+
+impl CancellationSignal {
+    /// Returns whether the runtime has requested cancellation.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.0.is_cancelled()
+    }
+
+    /// Waits until the runtime requests cancellation.
     pub async fn cancelled(&self) {
         self.0.cancelled().await;
     }
@@ -154,7 +175,7 @@ pub trait CapabilityProvider: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::{CancellationSignal, InteractionKind};
+    use super::{CancellationSource, InteractionKind};
 
     #[test]
     fn interaction_order_is_typed_then_semantic_then_visual() {
@@ -175,12 +196,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_is_cloneable_and_idempotent() {
-        let signal = CancellationSignal::new();
+    async fn cancellation_source_is_idempotent_and_signal_is_read_only() {
+        let source = CancellationSource::new();
+        let signal = source.signal();
         let observer = signal.clone();
         assert!(!observer.is_cancelled());
-        signal.cancel();
-        signal.cancel();
+        source.cancel();
+        source.cancel();
         observer.cancelled().await;
         assert!(observer.is_cancelled());
     }

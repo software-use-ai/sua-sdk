@@ -16,6 +16,7 @@ pub use invocation::{
     InvocationRequest, InvocationResult, InvocationSnapshot, InvocationState, RuntimeEvent,
 };
 pub use provider::{
-    CancellationSignal, CapabilityOffer, CapabilityProvider, CapabilityQuery, CapabilitySpec,
-    InteractionKind, OperationSafety, ProviderCapability, ProviderDescriptor, ProviderInvocation,
+    CancellationSignal, CancellationSource, CapabilityOffer, CapabilityProvider, CapabilityQuery,
+    CapabilitySpec, InteractionKind, OperationSafety, ProviderCapability, ProviderDescriptor,
+    ProviderInvocation,
 };
